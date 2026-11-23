@@ -12,6 +12,31 @@ NETLAB.defineModule('devices', ['js/data/devices-data.js'], function (root) {
   function esc(s) {
     return String(s === null || s === undefined ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
+
+  /* ---------- 外观图：网络图 + 占位回退（离线/失效自动降级） ---------- */
+  var BRAND_COLOR = { huawei: '#c7000b', h3c: '#0aa2c0', ruijie: '#f28c26' };
+  function phUri(d) {
+    var c = BRAND_COLOR[d.brand] || '#5b6b80';
+    var label = (d.typeName || '设备') + ' 外观图暂缺';
+    var svg = "<svg xmlns='http://www.w3.org/2000/svg' width='400' height='300'>"
+      + "<rect width='400' height='300' rx='14' fill='#f0f6fd'/>"
+      + "<rect x='70' y='105' width='260' height='90' rx='10' fill='none' stroke='" + c + "' stroke-width='3'/>"
+      + "<circle cx='100' cy='150' r='6' fill='" + c + "'/>";
+    var i;
+    for (i = 0; i < 8; i++) svg += "<rect x='" + (125 + i * 22) + "' y='138' width='14' height='24' rx='2' fill='none' stroke='" + c + "' stroke-width='2'/>";
+    svg += "<text x='200' y='235' font-size='15' text-anchor='middle' fill='#8a99ad' font-family='sans-serif'>" + label + "</text></svg>";
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  }
+  window.netdevFallback = function (el) {
+    if (el.dataset && el.dataset.fb && el.src !== el.dataset.fb) el.src = el.dataset.fb;
+  };
+  function imgHtml(d, cls) {
+    var ph = phUri(d);
+    var src = d.img ? esc(d.img) : ph;
+    var onerr = d.img ? ' onerror="netdevFallback(this)"' : '';
+    return '<img class="' + cls + '" loading="lazy" alt="' + esc(d.model) + '" src="' + src + '" data-fb="' + ph + '"' + onerr + '>';
+  }
+
   function priceNum(d) { return d.priceMin; }
 
   function filtered() {
@@ -47,7 +72,7 @@ NETLAB.defineModule('devices', ['js/data/devices-data.js'], function (root) {
   function skeleton() {
     root.innerHTML =
       '<div class="intro"><b>设备选型</b> 覆盖华为 / 新华三 / 锐捷主流 <b>交换机 · 路由器 · 网关/防火墙</b>' +
-      '<span class="dot">·</span>点击行看完整参数<span class="dot">·</span>可勾选 2-3 款对比<span class="dot">·</span>支持导出 CSV（Excel/WPS 可直接打开）</div>' +
+      '<span class="dot">·</span>点击行看完整参数与外观图<span class="dot">·</span>可勾选 2-3 款对比<span class="dot">·</span>支持导出 CSV（Excel/WPS 可直接打开）<span class="dot">·</span>设备照片来自网络公开渠道，仅供参考</div>' +
       '<div class="dev-bar">' +
       '  <input class="inp search" id="devQ" placeholder="搜型号 / 场景 / 端口（例：5735、PoE、校园、万兆）">' +
       '  <div class="seg" id="devBrand">' +
@@ -71,7 +96,7 @@ NETLAB.defineModule('devices', ['js/data/devices-data.js'], function (root) {
       '  <label class="opt-item"><input type="checkbox" id="optHot"> 政企集采常见</label>' +
       '</div>' +
       '<div class="tbl-wrap"><table class="dev-tbl"><thead><tr>' +
-      '  <th>型号</th><th>品牌</th><th>类型</th><th>层级</th><th>关键端口</th>' +
+      '  <th style="width:78px">外观</th><th>型号</th><th>品牌</th><th>类型</th><th>层级</th><th>关键端口</th>' +
       '  <th>三层</th><th>PoE</th><th>参考区间(元)</th><th>对比</th>' +
       '</tr></thead><tbody id="devBody"></tbody></table></div>' +
       '<div class="dev-res-count" id="devCount"></div>' +
@@ -121,9 +146,10 @@ NETLAB.defineModule('devices', ['js/data/devices-data.js'], function (root) {
     var list = filtered();
     var body = root.querySelector('#devBody');
     root.querySelector('#devCount').textContent = '共 ' + list.length + ' 款设备（可继续在数据文件 js/data/devices-data.js 中自行扩充）';
-    if (!list.length) { body.innerHTML = '<tr><td colspan="9"><div class="empty">没有符合条件的设备，试试放宽筛选</div></td></tr>'; return; }
+    if (!list.length) { body.innerHTML = '<tr><td colspan="10"><div class="empty">没有符合条件的设备，试试放宽筛选</div></td></tr>'; return; }
     body.innerHTML = list.map(function (d) {
       return '<tr data-id="' + d.id + '">' +
+        '<td class="thumb-td">' + imgHtml(d, 'dev-thumb') + '</td>' +
         '<td class="model">' + esc(d.model) + (d.hot ? '<span class="hot">★ 集采常见</span>' : '') + '<div style="font-weight:400;font-size:11.5px;color:#8a99ad">' + esc(d.name) + '</div></td>' +
         '<td><span class="brand-dot c-' + d.brand + '"></span>' + esc(d.brandName) + '</td>' +
         '<td>' + esc(d.typeName) + '</td>' +
@@ -176,7 +202,7 @@ NETLAB.defineModule('devices', ['js/data/devices-data.js'], function (root) {
       ['典型场景', function (d) { return d.sc; }],
       ['参考区间', function (d) { return d.price; }]
     ];
-    var html = '<table class="cmp-tbl"><tr><th>参数项</th>' + ds.map(function (d) { return '<th class="cm">' + esc(d.model) + '</th>'; }).join('') + '</tr>';
+    var html = '<table class="cmp-tbl"><tr><th>参数项</th>' + ds.map(function (d) { return '<th class="cm">' + imgHtml(d, 'cmp-img') + esc(d.model) + '</th>'; }).join('') + '</tr>';
     rows.forEach(function (r) {
       html += '<tr><td class="k">' + r[0] + '</td>' + ds.map(function (d) { return '<td>' + esc(r[1](d)) + '</td>'; }).join('') + '</tr>';
     });
@@ -190,7 +216,9 @@ NETLAB.defineModule('devices', ['js/data/devices-data.js'], function (root) {
     var d = byId(id);
     if (!d) return;
     var sp = function (k, v) { return '<div class="sp"><b>' + k + '</b><span>' + esc(v) + '</span></div>'; };
-    var html = '<div class="spec-grid">' +
+    var html = '<div class="hero-wrap">' + imgHtml(d, 'spec-hero') +
+      '<div class="hero-cap">产品外观图（来源：网络公开渠道' + (d.img ? '' : '，暂缺，示意图代替') + '；仅供参考，实物以厂商规格书为准）</div></div>' +
+      '<div class="spec-grid">' +
       sp('品牌', d.brandName) + sp('类型', d.typeName) + sp('层级', d.tier) +
       sp('端口配置', d.ports) + sp('交换容量', d.cap) + sp('包转发率', d.fwd || '—') +
       sp('三层能力', d.l3 ? '三层（支持VLAN间路由）' : '二层') +
@@ -234,9 +262,9 @@ NETLAB.defineModule('devices', ['js/data/devices-data.js'], function (root) {
       if (/[",\n]/.test(v)) v = '"' + v.replace(/"/g, '""') + '"';
       return v;
     }
-    var head = ['型号', '名称', '品牌', '类型', '层级', '端口', '交换容量', '包转发率', '三层', 'PoE', '管理方式', '典型场景', '参考价格', '标签'];
+    var head = ['型号', '名称', '品牌', '类型', '层级', '端口', '交换容量', '包转发率', '三层', 'PoE', '管理方式', '典型场景', '参考价格', '图片', '标签'];
     var rows = list.map(function (d) {
-      return [d.model, d.name, d.brandName, d.typeName, d.tier, d.ports, d.cap, d.fwd || '', d.l3 ? '三层' : '二层', d.poe ? '支持' : '', d.mgmt, d.sc, d.price, (d.tags || []).join('、')].map(cell).join(',');
+      return [d.model, d.name, d.brandName, d.typeName, d.tier, d.ports, d.cap, d.fwd || '', d.l3 ? '三层' : '二层', d.poe ? '支持' : '', d.mgmt, d.sc, d.price, d.img || '', (d.tags || []).join('、')].map(cell).join(',');
     });
     var csv = '\ufeff' + head.map(cell).join(',') + '\r\n' + rows.join('\r\n') +
       '\r\n\r\n' + cell('说明：参数为公开资料整理，(参考)值与价格请以厂商官方资料及实际报价为准') ;
